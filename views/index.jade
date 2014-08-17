@@ -1,23 +1,21 @@
 extends layout
 
 block content
-  div.container
-    div.row
-      div.span12
-        form(method='post', action='/', enctype='multipart/form-data')
-          legend express-upload-progress
-          input(type='file', name='myFile', id='myFile')
-          p
-          div.form-actions
-            input.btn.btn-primary(type='submit', value='Submit')
-    hr
-    div.row
-      div.span12
-        div.progress.progress-striped.active.hide
-          div.bar(style='width: 0%')
-    div.row
-      div.span12
-        div.alert.hide
-          button.close(type='button', data-dismiss='alert') x
-          span
-            strong.message
+  div.wrapper-all
+    h1 Faça o upload de seu vídeo agora mesmo!
+    p Você poderá compartilhar e assistir seu vídeo pelo próprio navegador!
+    form(method='post', action='/', enctype='multipart/form-data')
+      input(type='file', name='myFile', id='myFile')
+      div
+        button.btn.submit Enviar 
+    div.wrap-progress-bar
+      div.wrap-label-bar
+        label.label-bar
+        span.percent
+      div.progress.progress-striped.active
+        div.bar(style='width: 0%')
+    div
+      div.alert.hide
+        button.close(type='button', data-dismiss='alert') x
+        span
+          strong.message
