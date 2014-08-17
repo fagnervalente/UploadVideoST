@@ -1,0 +1,17 @@
+doctype html
+html
+  head
+    title Desafio Samba Tech
+    link(rel='stylesheet', href='/stylesheets/style.css')
+  body.transition-all
+    div.wrapper-all-video
+      h1 Compartilhe este vídeo com seus amigos
+      div.wrapper-video
+        video( src="#{url}", controls)
+      div.group-link
+        span Link
+        input(type="text", id="link-video", value="#{url}")
+    script(src='/javascripts/jquery-1.9.1.min.js')
+    script(src='/javascripts/video.js')
+  
+        
