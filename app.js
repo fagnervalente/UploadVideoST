@@ -6,7 +6,7 @@ var express = require('express')
   , readline = require('readline')
   , fs = require('fs');
 
-var client = new Zencoder('c97c15d27e8f792f34f16af728552119');
+var client = new Zencoder('<credential zencoder>');
 var BUCKET_NAME = 'teste-bucket-fagner';
 
 var rl = readline.createInterface({
@@ -17,6 +17,7 @@ var rl = readline.createInterface({
 var zstatus = {
   nome: '',
   percent: 0,
+  url: '',
   error: false
 };
 
@@ -30,7 +31,7 @@ app.configure(function(){
   app.use(express.logger('dev'));
   app.use(express.bodyParser({ 
     keepExtensions: true, 
-    uploadDir: __dirname + '/tmp',
+    uploadDir: __dirname + '/tmp'
   }));
   app.use(express.methodOverride());
   app.use(app.router);
@@ -49,7 +50,7 @@ app.get('/', function(req, res) {
 
 app.get('/zstatus', function(req, res){
 
-  res.send('{ "nome": "'+zstatus.nome+'", "percent": "'+zstatus.percent+'", "error": '+zstatus.error+' }');
+  res.send('{ "nome": "'+zstatus.nome+'", "percent": "'+zstatus.percent+'", "url": "'+zstatus.url+'", "error": '+zstatus.error+' }');
   res.end();
 
 });
@@ -62,8 +63,8 @@ app.post('/', function(req, res){
 
     var uploader = new StreamingS3(
       fStream, 
-      'AKIAJG2N2BX723GRMBMA', 
-      'dDixFlKSbCsJxXN23nwVHjbdMH1YgQSWX6QBG2TE',
+      '<id>', 
+      '<secret>',
       {
         Bucket: BUCKET_NAME,
         Key: file.name,
@@ -87,6 +88,8 @@ app.post('/', function(req, res){
     });
 
     uploader.on('finished', function (resp, stats) {
+
+      res.end();
       
       console.log('Upload finished: ', resp);
 
@@ -112,6 +115,8 @@ app.post('/', function(req, res){
 
         var urlNewFile = urlBucketEncodeds + file.name;
 
+        zstatus.url = urlNewFile;
+
         poll(data.id); // start polling... polling will continue to call itself until finished.
       });
 
@@ -120,8 +125,6 @@ app.post('/', function(req, res){
     uploader.on('error', function (e) {
       console.log('Upload error: ', e);
     });
-
-    res.end();
 
 });
 
@@ -133,8 +136,7 @@ app.get('/video', function(req, res){
     }
     else
     {
-        res.write('<h1>Veja seu video aqui</h1>');
-        res.write('<video src="' + req.query.url + '" controls width="426" height="240"></video>');
+        res.render('video', { url: req.query.url });
     }
 
     res.end();
@@ -166,6 +168,7 @@ var poll = function(id) {
   setTimeout(function(){
     client.Job.progress(id, function(err, data) {
       if (err) { 
+        console.log("OH NO! There was an error");
         zstatus.error = true;
         return err; 
       } 
@@ -189,16 +192,19 @@ var poll = function(id) {
         zstatus.nome = 'Processando';
         zstatus.error = false;
 
+        rl.write(null, {ctrl: true, name: 'u'}); // clear the current status so we can update progress
+        rl.write('Processing: ' + progress + '%');
         this.status = 'processing';
 
         poll(id);
 
       } else if (data.state == 'finished') {
-        
+        console.log('Video Encodado');
         zstatus.nome = 'Vídeo encodado!';
+        zstatus.percent = 100;
         zstatus.error = false;
 
       }
     }, 5000);
   })
-}
+};
