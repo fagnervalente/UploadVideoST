@@ -6,7 +6,7 @@ var express = require('express')
   , readline = require('readline')
   , fs = require('fs');
 
-var client = new Zencoder('<credential zencoder>');
+var client = new Zencoder('c97c15d27e8f792f34f16af728552119');
 var BUCKET_NAME = 'teste-bucket-fagner';
 
 var rl = readline.createInterface({
@@ -59,12 +59,14 @@ app.post('/', function(req, res){
 
     var file = req.files.myFile;
 
+    fs.chmodSync(file.path, 777);
+
     var fStream = fs.createReadStream(file.path);
 
     var uploader = new StreamingS3(
       fStream, 
-      '<id>', 
-      '<secret>',
+      'AKIAIAVZOEWUYDLYL4QA', 
+      'YcFIMeT8l35ppqyMi0hz244wG+qs4uLjEtAwpMgW',
       {
         Bucket: BUCKET_NAME,
         Key: file.name,
@@ -89,20 +91,25 @@ app.post('/', function(req, res){
 
     uploader.on('finished', function (resp, stats) {
 
+      console.log('resp.location = '+resp.Location);
+
+      //fs.chmodSync(resp.Location, 777);
+
       res.end();
       
       console.log('Upload finished: ', resp);
 
       var arrayUrlBucket = resp.Location.split('/');
 
-      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/encode/';
+      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/' + 'zen-' + file.name;
 
-      console.log(urlBucketEncodeds + file.name);
+      console.log(urlBucketEncodeds);
 
       client.Job.create({
         input: resp.Location,
         outputs: [{
-          url: urlBucketEncodeds + file.name
+          "url": urlBucketEncodeds,
+          "public": true
         }]
       }, function(err, data){
         if (err) 
@@ -113,11 +120,9 @@ app.post('/', function(req, res){
         }
         console.log('Job created!\nJob ID: ' + data.id);
 
-        var urlNewFile = urlBucketEncodeds + file.name;
+        zstatus.url = urlBucketEncodeds;
 
-        zstatus.url = urlNewFile;
-
-        poll(data.id); // start polling... polling will continue to call itself until finished.
+        poll(data.id); 
       });
 
     });
@@ -175,7 +180,7 @@ var poll = function(id) {
       if (data.state == 'waiting') {
         if (!this.status || this.status != 'waiting') {
           
-          zstatus.nome = 'Aguardando';
+          zstatus.nome = 'Aguardando zencoder';
           zstatus.error = false;
 
           this.status = 'waiting'; // set status to waiting so we can start adding dots.
@@ -189,7 +194,7 @@ var poll = function(id) {
         var progress = Math.round(data.progress * 100) / 100;
 
         zstatus.percent = progress;
-        zstatus.nome = 'Processando';
+        zstatus.nome = 'Convertendo video para mp4';
         zstatus.error = false;
 
         rl.write(null, {ctrl: true, name: 'u'}); // clear the current status so we can update progress
