@@ -55,8 +55,8 @@ function ProcessEncode()
       dataType: 'JSON',
       success: function(data){
 
-        //if (!data.error)
-        //{
+        if (!data.error)
+        {
           console.log(data.nome + ' | ' + data.percent);
 
 
@@ -74,9 +74,9 @@ function ProcessEncode()
             $('.label-bar').text('Salvando arquivo no servidor...');
             window.location = '/video?url='+data.url;
           }
-        //}else{
-          //console.log('Ocorreu um erro');
-        //}
+        }else{
+          console.log('Ocorreu um erro');
+        }
       },
       error: function(){
         console.log('erro');
