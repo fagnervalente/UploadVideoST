@@ -2,9 +2,12 @@ var express = require('express')
   , http = require('http')
   , path = require('path')
   , Zencoder = require('zencoder')
-  , StreamingS3 = require('streaming-s3')
   , readline = require('readline')
-  , fs = require('fs');
+  , fs = require('fs')
+  , AWS = require('aws-sdk');
+
+AWS.config.loadFromPath('./awsconfig.json');
+var s3 = new AWS.S3();
 
 var client = new Zencoder('c97c15d27e8f792f34f16af728552119');
 var BUCKET_NAME = 'teste-bucket-fagner';
@@ -21,6 +24,19 @@ var zstatus = {
   error: false
 };
 
+ 
+// Upload
+var startTime = new Date();
+var partSize = 1024 * 1024 * 5; // Minimum 5MB per chunk (except the last part) http://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadComplete.html
+
+var maxUploadTries = 3;
+
+var multipartMap = {
+    Parts: []
+};
+
+var multiUploadDone = false;
+
 var app = express();
 
 app.configure(function(){
@@ -31,7 +47,9 @@ app.configure(function(){
   app.use(express.logger('dev'));
   app.use(express.bodyParser({ 
     keepExtensions: true, 
-    uploadDir: __dirname + '/tmp'
+    uploadDir: __dirname + '/tmp',
+    maxFieldsSize:'2 * 1024 * 1024 * 1024',
+    timeout: '120000'
   }));
   app.use(express.methodOverride());
   app.use(app.router);
@@ -59,72 +77,58 @@ app.post('/', function(req, res){
 
     fs.chmodSync(file.path, 777);
 
-    var fStream = fs.createReadStream(file.path);
+    //var fStream = fs.createReadStream(file.path);
 
-    var uploader = new StreamingS3(
-      fStream, 
-      'AKIAIAVZOEWUYDLYL4QA', 
-      'YcFIMeT8l35ppqyMi0hz244wG+qs4uLjEtAwpMgW',
-      {
+    var fStream = fs.readFileSync(file.path);
+
+    //var buffer = fs.readFileSync('./' + filePath);
+
+    // Multipart
+    //console.log("Creating multipart upload for:", file.name);
+
+    var multiPartParams = {
         Bucket: BUCKET_NAME,
         Key: file.name,
-        ContentType: file.type
+        ContentType: file.type,
+        ACL: 'public-read-write'
+    };
+
+    var numPartsLeft = Math.ceil(fStream.length / partSize);
+
+    s3.createMultipartUpload(multiPartParams, function(mpErr, multipart){
+
+      if (mpErr) { console.log('Error!', mpErr); return; }
+      //console.log("Got upload ID", multipart.UploadId);
+
+      var partNum = 0;
+      // Grab each partSize chunk and upload it as a part
+      for (var rangeStart = 0; rangeStart < fStream.length; rangeStart += partSize) {
+        partNum++;
+        var end = Math.min(rangeStart + partSize, fStream.length),
+            partParams = {
+              Body: fStream.slice(rangeStart, end),
+              Bucket: BUCKET_NAME,
+              Key: file.name,
+              PartNumber: String(partNum),
+              UploadId: multipart.UploadId
+            };
+     
+        // Send a single part
+        //console.log('Uploading part: #', partParams.PartNumber, ', Range start:', rangeStart);
+        uploadPart(s3, multipart, partParams, numPartsLeft);
       }
-    );
 
-    uploader.begin();
+      var processDownload = setInterval(function(){
 
-    uploader.on('data', function (bytesRead) {
-      //console.log(bytesRead, ' bytes read.');
-    });
-
-    uploader.on('part', function (number) {
-      //console.log('Part ', number, ' uploaded.');
-    });
-
-    // Upload done
-    uploader.on('uploaded', function (stats) {
-      //console.log('Upload stats: ', stats);
-    });
-
-    // Upload finished
-    uploader.on('finished', function (resp, stats) {
-
-      // End of request
-      res.end();
-      
-      //console.log('Upload finished: ', resp);
-
-      var arrayUrlBucket = resp.Location.split('/');
-
-      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/' + 'zen-' + file.name;
-
-      //console.log(urlBucketEncodeds);
-
-      client.Job.create({
-        input: resp.Location,
-        outputs: [{
-          "url": urlBucketEncodeds,
-          "public": true
-        }]
-      }, function(err, data){
-        if (err) 
-        { 
-            console.log("OH NO! There was an error");
-            console.log(err); 
-            return err; 
+        if ( multiUploadDone )
+        {
+          clearInterval(processDownload);
+          multiUploadDone = false;
+          res.end();
         }
-        console.log('Job created!\nJob ID: ' + data.id);
 
-        zstatus.url = urlBucketEncodeds;
+      }, 300);
 
-        poll(data.id); 
-      });
-
-    });
-
-    uploader.on('error', function (e) {
-      console.log('Upload error: ', e);
     });
 
 });
@@ -148,54 +152,135 @@ http.createServer(app).listen(app.get('port'), function(){
   console.log("Express server listening on port " + app.get('port'));
 });
 
-var fs = require('fs');
-
-var deleteAfterUploadS3 = function(path) {
-    fs.unlink(path, function(err) {
-      if (err) console.log(err);
-    });
-};
 
 var poll = function(id) {
-  client.Job.progress(id, function(err, data) {
-    if (err) { 
-      //console.log("OH NO! There was an error");
-      zstatus.error = true;
-      return err; 
-    } 
-    if (data.state == 'waiting') 
-    {
-      if (!this.status || this.status != 'waiting') 
-      {
-        zstatus.nome = 'Aguardando zencoder';
-        zstatus.error = false;
-        this.status = 'waiting';
+  setTimeout(function(){
+    client.Job.progress(id, function(err, data) {
+      if (err) { 
+        console.log("OH NO! There was an error");
+        console.log(err);
+        zstatus.error = true;
+        return err; 
       } 
 
-      poll(id);
+      //console.log('progress output: ' + data);
 
-    } 
-    else if (data.state == 'processing') 
-    {
-      var progress = Math.round(data.progress * 100) / 100;
+      if (data.state == 'waiting') 
+      {
+        if (!this.status || this.status != 'waiting') 
+        {
+          zstatus.nome = 'Aguardando zencoder';
+          zstatus.error = false;
+          this.status = 'waiting';
+        } 
 
-      zstatus.percent = progress;
-      zstatus.nome = 'Convertendo video para mp4';
-      zstatus.error = false ;
+        poll(id);
 
-      //rl.write(null, {ctrl: true, name: 'u'});
-      //rl.write('Processing: ' + progress + '%');
-      this.status = 'processing';
+      } 
+      else if (data.state == 'processing') 
+      {
+        var progress = Math.round(data.progress * 100) / 100;
 
-      poll(id);
+        zstatus.percent = progress;
+        zstatus.nome = 'Convertendo video para mp4';
+        zstatus.error = false ;
 
-    } 
-    else if (data.state == 'finished') 
-    {
-      console.log('Video Encodado');
-      zstatus.nome = 'Vídeo encodado!';
-      zstatus.percent = 100;
-      zstatus.error = false;
-    }
-  }, 5000);
+        rl.write(null, {ctrl: true, name: 'u'});
+        rl.write('Processing: ' + progress + '%');
+        this.status = 'processing';
+
+        poll(id);
+
+      } 
+      else if (data.state == 'finished') 
+      {
+        //console.log('Video Encodado');
+        zstatus.nome = 'Vídeo encodado!';
+        zstatus.percent = 100;
+        zstatus.error = false;
+      }
+    }, 5000);
+  });
 };
+
+function completeMultipartUpload(s3, doneParams) {
+
+  multiUploadDone = true;
+
+  s3.completeMultipartUpload(doneParams, function(err, data) {
+    if (err) {
+      console.log("An error occurred while completing the multipart upload");
+      console.log(err);
+    } else {
+      var delta = (new Date() - startTime) / 1000;
+      //console.log('Completed upload in', delta, 'seconds');
+      //console.log('Final upload data:', data);
+
+      var paramsObjectAcl = {
+        Bucket: BUCKET_NAME,
+        Key: doneParams.Key
+      };
+
+      var arrayUrlBucket = data.Location.split('/');
+
+      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/encode/' + doneParams.Key;
+
+      //console.log(urlBucketEncodeds);
+
+      client.Job.create({
+        input: data.Location,
+        outputs: [{
+          "url": urlBucketEncodeds,
+          "public": true
+        }]
+      }, function(err, data){
+        if (err) 
+        { 
+            console.log("OH NO! There was an error");
+            console.log(err); 
+            return err; 
+        }
+        //console.log('Job created!\nJob ID: ' + data.id);
+
+        zstatus.url = urlBucketEncodeds;
+
+        poll(data.id); 
+      });
+
+
+    }
+  });
+}
+
+function uploadPart(s3, multipart, partParams, tryNum, numPartsLeft) {
+  var tryNum = tryNum || 1;
+  s3.uploadPart(partParams, function(multiErr, mData) {
+    if (multiErr){
+      console.log('multiErr, upload part error:', multiErr);
+      if (tryNum < maxUploadTries) {
+        //console.log('Retrying upload of part: #', partParams.PartNumber)
+        uploadPart(s3, multipart, partParams, tryNum + 1);
+      } else {
+        //console.log('Failed uploading part: #', partParams.PartNumber)
+      }
+      return;
+    }
+    multipartMap.Parts[this.request.params.PartNumber - 1] = {
+      ETag: mData.ETag,
+      PartNumber: Number(this.request.params.PartNumber)
+    };
+    //console.log("Completed part", this.request.params.PartNumber);
+    //console.log('mData', mData);
+    if (--numPartsLeft > 0) return; // complete only when all parts uploaded
+ 
+    var doneParams = {
+      Bucket: BUCKET_NAME,
+      Key: partParams.Key,
+      MultipartUpload: multipartMap,
+      UploadId: multipart.UploadId
+    };
+ 
+    //console.log("Completing upload...");
+    completeMultipartUpload(s3, doneParams);
+  });
+}
