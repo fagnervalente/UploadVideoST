@@ -181,7 +181,7 @@ var poll = function(id) {
 
       zstatus.percent = progress;
       zstatus.nome = 'Convertendo video para mp4';
-      zstatus.error = false;
+      zstatus.error = false ;
 
       //rl.write(null, {ctrl: true, name: 'u'});
       //rl.write('Processing: ' + progress + '%');
