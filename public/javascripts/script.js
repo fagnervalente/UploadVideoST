@@ -8,13 +8,15 @@ $(function() {
   
   $('form').on('submit', function(evt) {
     evt.preventDefault();
-    console.log('eita');
 
     $('div.progress').show();
 
     $('.label-bar').text('Enviando video');
+
     var formData = new FormData();
+
     var file = document.getElementById('myFile').files[0];
+
     formData.append('myFile', file);
     
     var xhr = new XMLHttpRequest();
@@ -22,15 +24,22 @@ $(function() {
     xhr.open('post', '/', true);
     
     xhr.upload.onprogress = function(e) {
+
       if (e.lengthComputable) {
+
         var percent = (e.loaded / e.total) * 100;
+        percent.toFixed(2);
+        
         $('span.percent').text(percent+'%');
         $('div.progress div.bar').css('width', percent + '%');
+
+        if ( percent >= 100 )
+          $('.label-bar').text('Gravando arquivo no servidor...');
       }
     };
     
     xhr.onerror = function(e) {
-      showInfo('An error occurred while submitting the form. Maybe your file is too big');
+      showInfo('Ocorreu um erro durante o envio do arquivo. Talvez a conexão tenha sido interrompida.');
     };
     
     xhr.onload = function() {
@@ -59,7 +68,6 @@ function ProcessEncode()
         {
           console.log(data.nome + ' | ' + data.percent);
 
-
           if ( data.nome != '' || data.percent > 0 )
           {
             $('.label-bar').text(data.nome);
@@ -76,12 +84,16 @@ function ProcessEncode()
           }
         }else{
           console.log('Ocorreu um erro');
+          clearInterval(intervalZStatus);
+          showInfo('Ocorreu um erro durante a conversão do arquivo');
         }
       },
       error: function(){
         console.log('erro');
+        clearInterval(intervalZStatus);
+        showInfo('Ocorreu um erro durante a conversão do arquivo');
       }
     });
 
-  }, 1000);
+  }, 2000);
 }

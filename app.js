@@ -42,8 +42,6 @@ app.configure('development', function(){
   app.use(express.errorHandler());
 });
 
-// Routes
-
 app.get('/', function(req, res) {
   res.render('index');
 });
@@ -74,36 +72,34 @@ app.post('/', function(req, res){
       }
     );
 
-    uploader.begin(); // important if callback not provided.
+    uploader.begin();
 
     uploader.on('data', function (bytesRead) {
-      console.log(bytesRead, ' bytes read.');
+      //console.log(bytesRead, ' bytes read.');
     });
 
     uploader.on('part', function (number) {
-      console.log('Part ', number, ' uploaded.');
+      //console.log('Part ', number, ' uploaded.');
     });
 
-    // All parts uploaded, but upload not yet acknowledged.
+    // Upload done
     uploader.on('uploaded', function (stats) {
-      console.log('Upload stats: ', stats);
+      //console.log('Upload stats: ', stats);
     });
 
+    // Upload finished
     uploader.on('finished', function (resp, stats) {
 
-      console.log('resp.location = '+resp.Location);
-
-      //fs.chmodSync(resp.Location, 777);
-
+      // End of request
       res.end();
       
-      console.log('Upload finished: ', resp);
+      //console.log('Upload finished: ', resp);
 
       var arrayUrlBucket = resp.Location.split('/');
 
       var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/' + 'zen-' + file.name;
 
-      console.log(urlBucketEncodeds);
+      //console.log(urlBucketEncodeds);
 
       client.Job.create({
         input: resp.Location,
@@ -148,18 +144,9 @@ app.get('/video', function(req, res){
 
 });
 
-/*app.post('/', function(req, res) {
-  deleteAfterUpload(req.files.myFile.path);
-  res.end();
-});*/
-
-// Start the app
-
 http.createServer(app).listen(app.get('port'), function(){
   console.log("Express server listening on port " + app.get('port'));
 });
-
-// Private functions
 
 var fs = require('fs');
 
@@ -170,46 +157,45 @@ var deleteAfterUploadS3 = function(path) {
 };
 
 var poll = function(id) {
-  setTimeout(function(){
-    client.Job.progress(id, function(err, data) {
-      if (err) { 
-        console.log("OH NO! There was an error");
-        zstatus.error = true;
-        return err; 
+  client.Job.progress(id, function(err, data) {
+    if (err) { 
+      //console.log("OH NO! There was an error");
+      zstatus.error = true;
+      return err; 
+    } 
+    if (data.state == 'waiting') 
+    {
+      if (!this.status || this.status != 'waiting') 
+      {
+        zstatus.nome = 'Aguardando zencoder';
+        zstatus.error = false;
+        this.status = 'waiting';
       } 
-      if (data.state == 'waiting') {
-        if (!this.status || this.status != 'waiting') {
-          
-          zstatus.nome = 'Aguardando zencoder';
-          zstatus.error = false;
 
-          this.status = 'waiting'; // set status to waiting so we can start adding dots.
-        } else {
-          // keep adding '.' until we start processing
-        }
+      poll(id);
 
-        poll(id);
+    } 
+    else if (data.state == 'processing') 
+    {
+      var progress = Math.round(data.progress * 100) / 100;
 
-      } else if (data.state == 'processing') {
-        var progress = Math.round(data.progress * 100) / 100;
+      zstatus.percent = progress;
+      zstatus.nome = 'Convertendo video para mp4';
+      zstatus.error = false;
 
-        zstatus.percent = progress;
-        zstatus.nome = 'Convertendo video para mp4';
-        zstatus.error = false;
+      //rl.write(null, {ctrl: true, name: 'u'});
+      //rl.write('Processing: ' + progress + '%');
+      this.status = 'processing';
 
-        rl.write(null, {ctrl: true, name: 'u'}); // clear the current status so we can update progress
-        rl.write('Processing: ' + progress + '%');
-        this.status = 'processing';
+      poll(id);
 
-        poll(id);
-
-      } else if (data.state == 'finished') {
-        console.log('Video Encodado');
-        zstatus.nome = 'Vídeo encodado!';
-        zstatus.percent = 100;
-        zstatus.error = false;
-
-      }
-    }, 5000);
-  })
+    } 
+    else if (data.state == 'finished') 
+    {
+      console.log('Video Encodado');
+      zstatus.nome = 'Vídeo encodado!';
+      zstatus.percent = 100;
+      zstatus.error = false;
+    }
+  }, 5000);
 };
