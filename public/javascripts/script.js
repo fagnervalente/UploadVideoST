@@ -34,11 +34,14 @@ $(function() {
         $('div.progress div.bar').css('width', percent + '%');
 
         if ( percent >= 100 )
+        {
           $('.label-bar').text('Gravando arquivo no servidor...');
+        }
       }
     };
     
     xhr.onerror = function(e) {
+      console.log(e);
       showInfo('Ocorreu um erro durante o envio do arquivo. Talvez a conexão tenha sido interrompida.');
     };
     
@@ -55,6 +58,8 @@ $(function() {
 
 function ProcessEncode()
 {
+  var countRequest = 0;
+
   $('.label-bar').text('Aguardando conversor de video...');
 
   var intervalZStatus = setInterval(function(){
@@ -63,6 +68,8 @@ function ProcessEncode()
       type: 'GET',
       dataType: 'JSON',
       success: function(data){
+
+        countRequest ++
 
         if (!data.error)
         {
@@ -86,6 +93,12 @@ function ProcessEncode()
           console.log('Ocorreu um erro');
           clearInterval(intervalZStatus);
           showInfo('Ocorreu um erro durante a conversão do arquivo');
+        }
+
+        if ( countRequest >= 2000 )
+        {
+          if ( confirm('O zencoder está demorando tempo demais para converter o arquivo... Deseja cancelar a ação?') )
+            clearInterval(intervalZStatus);
         }
       },
       error: function(){

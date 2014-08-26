@@ -10,7 +10,8 @@ AWS.config.loadFromPath('./awsconfig.json');
 var s3 = new AWS.S3();
 
 var client = new Zencoder('c97c15d27e8f792f34f16af728552119');
-var BUCKET_NAME = 'teste-bucket-fagner';
+//var BUCKET_NAME = 'teste-bucket-fagner';
+var BUCKET_NAME = 'upload.sambatech';
 
 var rl = readline.createInterface({
   input: process.stdin,
@@ -23,6 +24,13 @@ var zstatus = {
   url: '',
   error: false
 };
+
+/*var nomearquivo = "nome_file.avi";
+
+console.log( nomearquivo );
+
+nomearquivo = nomearquivo.slice(0, -4) + ".mp4";
+console.log( nomearquivo );*/
 
  
 // Upload
@@ -45,11 +53,12 @@ app.configure(function(){
   app.set('view engine', 'jade');
   app.use(express.favicon());
   app.use(express.logger('dev'));
+  app.use(express.timeout(4*60*60*1000));
+  app.use(express.limit('200mb'));
   app.use(express.bodyParser({ 
     keepExtensions: true, 
     uploadDir: __dirname + '/tmp',
-    maxFieldsSize:'2 * 1024 * 1024 * 1024',
-    timeout: '120000'
+    maxFieldsSize:'200mb'
   }));
   app.use(express.methodOverride());
   app.use(app.router);
@@ -79,6 +88,8 @@ app.post('/', function(req, res){
 
     //var fStream = fs.createReadStream(file.path);
 
+    console.log(file.path);
+
     var fStream = fs.readFileSync(file.path);
 
     //var buffer = fs.readFileSync('./' + filePath);
@@ -98,7 +109,7 @@ app.post('/', function(req, res){
     s3.createMultipartUpload(multiPartParams, function(mpErr, multipart){
 
       if (mpErr) { console.log('Error!', mpErr); return; }
-      //console.log("Got upload ID", multipart.UploadId);
+      console.log("Got upload ID", multipart.UploadId);
 
       var partNum = 0;
       // Grab each partSize chunk and upload it as a part
@@ -114,7 +125,7 @@ app.post('/', function(req, res){
             };
      
         // Send a single part
-        //console.log('Uploading part: #', partParams.PartNumber, ', Range start:', rangeStart);
+        console.log('Uploading part: #', partParams.PartNumber, ', Range start:', rangeStart);
         uploadPart(s3, multipart, partParams, numPartsLeft);
       }
 
@@ -205,7 +216,6 @@ var poll = function(id) {
 
 function completeMultipartUpload(s3, doneParams) {
 
-  multiUploadDone = true;
 
   s3.completeMultipartUpload(doneParams, function(err, data) {
     if (err) {
@@ -213,19 +223,18 @@ function completeMultipartUpload(s3, doneParams) {
       console.log(err);
     } else {
       var delta = (new Date() - startTime) / 1000;
-      //console.log('Completed upload in', delta, 'seconds');
-      //console.log('Final upload data:', data);
+      console.log('Completed upload in', delta, 'seconds');
+      console.log('Final upload data:', data);
 
-      var paramsObjectAcl = {
-        Bucket: BUCKET_NAME,
-        Key: doneParams.Key
-      };
+      //var objectFileS3 = s3.get var fStream = fs.createReadStream(file.path);
 
       var arrayUrlBucket = data.Location.split('/');
 
-      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/encode/' + doneParams.Key;
+      var urlBucketEncodeds = arrayUrlBucket[0] + '//' + arrayUrlBucket[2] + '/' + arrayUrlBucket[3] + '/zen-' + arrayUrlBucket[4].slice(0, -4) + ".mp4";
 
-      //console.log(urlBucketEncodeds);
+      console.log(urlBucketEncodeds);
+
+      multiUploadDone = true;
 
       client.Job.create({
         input: data.Location,
@@ -240,13 +249,13 @@ function completeMultipartUpload(s3, doneParams) {
             console.log(err); 
             return err; 
         }
-        //console.log('Job created!\nJob ID: ' + data.id);
+
+        console.log('Job created!\nJob ID: ' + data.id);
 
         zstatus.url = urlBucketEncodeds;
 
         poll(data.id); 
       });
-
 
     }
   });
